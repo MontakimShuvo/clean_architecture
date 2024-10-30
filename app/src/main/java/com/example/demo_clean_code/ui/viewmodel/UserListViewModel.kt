@@ -9,6 +9,7 @@ import com.example.demo_clean_code.domain.DeleteUserUseCase
 import com.example.demo_clean_code.domain.GetUsersUseCase
 import com.example.demo_clean_code.domain.NetworkStateResources
 import com.example.demo_clean_code.domain.SearchUsersUseCase
+import com.example.demo_clean_code.isValidName
 import com.example.demo_clean_code.ui.model.SnackbarEffect
 import com.example.demo_clean_code.ui.model.UserIntent
 import com.example.demo_clean_code.ui.model.UserViewState
@@ -78,6 +79,106 @@ class UserListViewModel @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    private fun searchUsers(query:String){
+        _viewState.update {
+            it.copy(searchQuery = query)
+        }
+        if(query.isEmpty()){
+            _viewState.update {
+                it.copy(
+                    filteredUserList = it.users,
+                    isLoading = false
+                )
+            }
+        }else{
+            searchJob?.cancel()
+            searchJob = viewModelScope.launch(Dispatchers.IO){
+                searchUsersUseCase(query).collectLatest {
+                    resource->
+                    when(resource){
+                        is NetworkStateResources.Loading -> withContext(Dispatchers.Main){
+                            _viewState.update {
+                                it.copy(
+                                    isLoading = true
+                                )
+                            }
+                        }
+
+                        is NetworkStateResources.Success -> withContext(Dispatchers.Main){
+                            _viewState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    filteredUserList = resource.data
+                                )
+                            }
+                        }
+
+                        is NetworkStateResources.Error -> withContext(Dispatchers.Main) {
+                            _viewState.update { it.copy(isLoading = false) }
+                            _effectChannel.send(SnackbarEffect.ShowSnackbar("Error searching users: ${resource.message}"))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun validateAndAddUser(name: String, email: String, imagePath: String?){
+        val nameError = !name.isValidName()
+        val emailError = !email.isValidName()
+        val imageError = !imagePath?.isValidName()!!
+
+        if(nameError || emailError || imageError){
+            val errorMessage = buildErrorMessage(nameError,emailError,imageError)
+            _viewState.update { it.copy(nameError = nameError, emailError = emailError) }
+            viewModelScope.launch(Dispatchers.Main) {
+                _effectChannel.send(SnackbarEffect.ShowSnackbar(errorMessage))
+            }
+            return
+        }
+
+        _viewState.update { it.copy(isLoading = true) }
+        viewModelScope.launch(Dispatchers.IO){
+            try {
+                val imageUrl = imagePath
+                addUserUseCase(UserEntity(name=name, email = email, imageUrl = imageUrl))
+                withContext(Dispatchers.Main){
+                    _viewState.update {
+                        it.copy(
+                            isLoading = false,
+                            name="",
+                            email = "",
+                            nameError = false,
+                            emailError = false
+                        )
+                    }
+                    _effectChannel.send(SnackbarEffect.ShowSnackbar("User added successfully!"))
+                }
+            }catch (e: Exception){
+                withContext(Dispatchers.Main){
+                    _viewState.update { it.copy(isLoading = false) }
+                    _effectChannel.send(SnackbarEffect.ShowSnackbar("Error adding user: ${e.message}"))
+                }
+            }
+        }
+    }
+
+
+    private fun buildErrorMessage(
+        nameError: Boolean,
+        emailError: Boolean,
+        imageError: Boolean
+    ): String {
+        return when {
+            nameError && emailError && imageError -> "Name, email, and image are required."
+            nameError && emailError -> "Name and email are required."
+            nameError -> "Name is required and must have at least 3 characters."
+            emailError -> "Invalid email address."
+            imageError -> "Please select or capture an image."
+            else -> ""
         }
     }
 
