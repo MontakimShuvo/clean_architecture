@@ -126,6 +126,60 @@ class UserListViewModel @Inject constructor(
         }
     }
 
+    private fun deleteUser(user:UserEntity){
+        _viewState.update { it.copy(isLoading = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            recentlyDeletedUser = user
+            try {
+                deleteUserUseCase(user)
+                withContext(Dispatchers.Main){
+                    _viewState.update { it.copy(isLoading = false) }
+                    _effectChannel.send(SnackbarEffect.ShowSnackbar("User deleted", "Undo"))
+                }
+            }catch (e:Exception){
+                withContext(Dispatchers.Main){
+                    _viewState.update { it.copy(isLoading = false) }
+                    _effectChannel.send(SnackbarEffect.ShowSnackbar("Error deleting user: ${e.message}"))
+                }
+            }
+        }
+    }
+
+    private fun clearUsers() {
+        _viewState.update { it.copy(isLoading = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                clearUsersUseCase()
+                withContext(Dispatchers.Main) {
+                    _viewState.update { it.copy(isLoading = false) }
+                    _effectChannel.send(SnackbarEffect.ShowSnackbar("All users cleared!"))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _viewState.update { it.copy(isLoading = false) }
+                    _effectChannel.send(SnackbarEffect.ShowSnackbar("Error clearing users: ${e.message}"))
+                }
+            }
+        }
+    }
+
+    private fun undoDelete() {
+        recentlyDeletedUser?.let { deletedUser ->
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    addUserUseCase(deletedUser)
+                    withContext(Dispatchers.Main) {
+                        _effectChannel.send(SnackbarEffect.ShowSnackbar("User restored successfully!"))
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        _effectChannel.send(SnackbarEffect.ShowSnackbar("Error restoring user: ${e.message}"))
+                    }
+                }
+            }
+        }
+    }
+
     private fun validateAndAddUser(name: String, email: String, imagePath: String?){
         val nameError = !name.isValidName()
         val emailError = !email.isValidName()
@@ -164,6 +218,16 @@ class UserListViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun validateName(name: String) {
+        val nameError = !name.isValidName()
+        _viewState.update { it.copy(name = name, nameError = nameError) }
+    }
+
+    private fun validateEmail(email: String) {
+        val emailError = !email.isValidName()
+        _viewState.update { it.copy(email = email, emailError = emailError) }
     }
 
 
