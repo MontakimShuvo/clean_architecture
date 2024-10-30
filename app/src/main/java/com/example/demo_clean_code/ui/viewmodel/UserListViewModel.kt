@@ -46,6 +46,19 @@ class UserListViewModel @Inject constructor(
 
     private var searchJob : Job? = null
 
+    fun handleIntent(intent: UserIntent){
+        when(intent){
+            is UserIntent.LoadUsers -> loadUsers()
+            is UserIntent.AddUser -> validateAndAddUser(intent.name,intent.email,intent.imagePath)
+            is UserIntent.DeleteUser -> deleteUser(intent.user)
+            is UserIntent.ClearUsers -> clearUsers()
+            is UserIntent.SearchUser -> searchUsers(intent.query)
+            is UserIntent.UpdateName -> validateName(intent.name)
+            is UserIntent.UpdateEmail -> validateEmail(intent.email)
+            is UserIntent.UndoDelete -> undoDelete()
+        }
+    }
+
 
     private fun loadUsers(){
         viewModelScope.launch(Dispatchers.IO) {
